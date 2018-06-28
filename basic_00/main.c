@@ -1,8 +1,21 @@
 #include <stdio.h>
+#include <stdlib.h>
+#include <pthread.h>
+
+
 #include <termios.h>  //_getch*/
 #include <unistd.h>   //_getch*/
 
-#include <pthread.h>
+
+struct t_thread
+{
+    pthread_t thread;
+    int id;
+    int sched_policy;
+    int shced_scope;
+    void (*cb)(int);
+};
+
 
 char getch(){
 
@@ -28,90 +41,156 @@ char getch(){
  }
 
 
-void* thread(void* arg)
+ void threadGetChar(int id)
+ {
+    char c='Z';
+    printf("[thread %d] Get char...\n",id);
+    c = getch();
+    printf("[thread %d] ... Got char '%c' \n",id,c);
+
+ }
+
+
+
+static void *_Thread(void *arg)
 {
-    int id = (int)arg;
+    struct t_thread* thread_s = (struct t_thread*)arg;
 
-    char val = 0;
+    printf("Thread (%d) running!\n",thread_s->id);
 
-    while(1)
+    char toggle = 1;
+    while (1)
     {
-        #ifdef GETCHAR
-        printf("Thread %d Wait for char...\n",id);
-        val = getch();
-
-        printf("thread %d get %c\n",id, val);
-        #else
-        printf("Thread %d Tic...\n",id);
         sleep(1);
-        #endif
+        printf ("[thread %d] %s\n",thread_s->id,toggle?"Tic...":"Toc...");
+        toggle = !toggle;
+
+        if(thread_s->cb != NULL)
+        {
+            thread_s->cb(thread_s->id);
+        }
     }
+    return NULL;
 }
 
-// #define THREAD_01_POLICY SCHED_FIFO
-#define THREAD_01_POLICY SCHED_FIFO
-#define THREAD_02_POLICY SCHED_RR
 
- int main(int arc, char** argv)
- {
-    // create the thread objs
-    pthread_t thread1 = NULL;
-    pthread_t thread2 = NULL;
 
-    int fifo_max_prio, fifo_min_prio,fifo_mid_prio;   
-    int rr_max_prio, rr_min_prio,rr_mid_prio;   
+int CreateThread(struct t_thread* p_thread)
+{
+
+    int retVal;
+
+    pthread_attr_t attr;
+    struct sched_param schedParam;
+
+    retVal = pthread_attr_init(&attr);
+    if (retVal)
+    {
+        fprintf(stderr, "pthread_attr_init error %d\n", retVal);
+        exit(1);
+    }
+
+    retVal = pthread_attr_setinheritsched(&attr, PTHREAD_EXPLICIT_SCHED);
+    if (retVal)
+    {
+        fprintf(stderr, "pthread_attr_setinheritsched error %d\n", retVal);
+        exit(1);
+    }
     
-    struct sched_param fifo_param;
-    struct sched_param rr_param;
+    retVal = pthread_attr_setschedpolicy(&attr, p_thread->sched_policy);
+    if (retVal)
+    {
+        fprintf(stderr, "pthread_attr_setschedpolicy error %d\n", retVal);
+        exit(1);
+    }
+    int max_prio, min_prio, mid_prio; 
+    max_prio = sched_get_priority_max(p_thread->sched_policy);   
+    min_prio = sched_get_priority_min(p_thread->sched_policy);   
+    mid_prio = (min_prio + max_prio)/2; 
 
-    pthread_attr_t custom_sched_attr_1;
-    pthread_attr_t custom_sched_attr_2;
-    
-    pthread_attr_init(&custom_sched_attr_1);
-    pthread_attr_init(&custom_sched_attr_2);
+    printf("[thread %d](Sched policy=%d, Sched Scope = %d, prio: min=%d, max=%d, mid=%d\n",
+        p_thread->id,
+        p_thread->sched_policy,
+        p_thread->shced_scope,
+        min_prio,
+        max_prio,mid_prio);
 
-    pthread_attr_setinheritsched(&custom_sched_attr_1, PTHREAD_EXPLICIT_SCHED); 
-    //pthread_attr_setinheritsched(&custom_sched_attr_2, PTHREAD_EXPLICIT_SCHED); 
-   
-   
+    schedParam.sched_priority = mid_prio;
 
-    //Set fifo priority
-    pthread_attr_setschedpolicy(&custom_sched_attr_1, THREAD_01_POLICY);
-    fifo_max_prio = sched_get_priority_max(THREAD_01_POLICY);   
-    fifo_min_prio = sched_get_priority_min(THREAD_01_POLICY);   
-    fifo_mid_prio = (fifo_min_prio + fifo_max_prio)/2;    
-    fifo_param.sched_priority = fifo_mid_prio;  
-    printf("=== FIFO Sched ===\n");
-    printf("[max:%d,mid=%d,min=%d\n",fifo_max_prio,fifo_mid_prio,fifo_min_prio);
-    
-    //pthread_attr_setschedparam(&custom_sched_attr_1, &fifo_param);
-    // start the threads
-    int thr1 = 1;
-    int err;
-    err = pthread_create(&thread1, &custom_sched_attr_1, *thread, (void *) thr1);
-    printf("thread=%d, err=%d\n",thread1,err);
-    if(thread1 == NULL)
-        printf ("Thread 1 is null\n");
-#if 0        
-   //Set rr priority
-    pthread_attr_setschedpolicy(&custom_sched_attr_2, THREAD_02_POLICY);
-    rr_max_prio = sched_get_priority_max(THREAD_02_POLICY);   
-    rr_min_prio = sched_get_priority_min(THREAD_02_POLICY);   
+    retVal = pthread_attr_setschedparam(&attr, &schedParam);
+    if (retVal)
+    {
+        fprintf(stderr, "pthread_attr_setschedparam error %d\n", retVal);
+        exit(1);
+    }
 
-    rr_mid_prio = (rr_min_prio + rr_max_prio)/2;    
-    rr_param.sched_priority = rr_mid_prio;    
-    printf("=== RR Sched ===\n");
-    printf("[max:%d,mid=%d,min=%d\n",rr_max_prio,rr_mid_prio,rr_min_prio);
-    
-    //pthread_attr_setschedparam(&custom_sched_attr_2, &rr_param); 
-    pthread_create(&thread2, &custom_sched_attr_2, *thread, (void *) thr2);
-    int thr2 = 2;
+    retVal = pthread_create(&(p_thread->thread),
+                            &attr,
+                            _Thread,
+                            p_thread);
+    if (retVal)
+    {
+        fprintf(stderr, "pthread_create error %d\n", retVal);
+        exit(1);
+    } 
+}
+
+
+struct t_thread  list_thread[]={
+    {
+        0,
+        0,
+        SCHED_FIFO,
+        PTHREAD_SCOPE_PROCESS,
+        NULL
+    }
+    ,{
+        0,
+        1,
+        SCHED_FIFO,
+        PTHREAD_SCOPE_PROCESS,
+        NULL
+    }
+#if 1
+    ,{
+        0,
+        2,
+        SCHED_FIFO,
+        PTHREAD_SCOPE_SYSTEM,
+        threadGetChar
+    }
 #endif
+};
 
-    // wait for threads to finish
-    if(thread1)
-        pthread_join(thread1,NULL);
-    //pthread_join(thread2,NULL);
+int main(void)
+{
+    int retVal;
 
+
+    int num_thread = 0;
+
+    num_thread = sizeof(list_thread) / sizeof(struct t_thread);
+    
+    int i = 0;
+
+    for( i = 0; i< num_thread;i++ )
+    {
+        retVal = CreateThread ( &(list_thread[i]) );
+    }
+ 
+ 
+
+    for( i = 0; i< num_thread;i++)
+    {
+      retVal = pthread_join(list_thread[i].thread, NULL);
+    }
+
+    if (retVal)
+    {
+        fprintf(stderr, "pthread_join error %d\n", retVal);
+        exit(1);
+    }
+
+    printf("main run successfully\n");
     return 0;
- }
+}
