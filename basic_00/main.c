@@ -133,6 +133,7 @@ int CreateThread(struct t_thread* p_thread)
         fprintf(stderr, "pthread_create error %d\n", retVal);
         exit(1);
     } 
+    return retVal;
 }
 
 
