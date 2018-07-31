@@ -36,6 +36,9 @@ int main(int arg, char* argv[])
 	interval.tv_sec = period / USEC_PER_SEC;
 	interval.tv_nsec = (period % USEC_PER_SEC) * 1000;
 
+	int ret=1;
+	while(1)
+	{
     clock_gettime(CLOCK_MONOTONIC, &now);
 
 	next = now;
@@ -50,20 +53,18 @@ int main(int arg, char* argv[])
 
     printf("Next:");
 	printTime(next);
-	int ret=1;
-	while(1)
-	{
-		#if 0
+
+#if 1
 		if ((ret = clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &next, NULL))) {
 			if (ret != EINTR)
 				warn("clock_nanosleep failed. errno: %d\n", errno);
 			goto out;
 			}
 			printf("tic...\n");
-			#else
+#else
 		nanosleep(&interval,NULL);
 		printf("tic...\n");
-		#endif
+#endif
 	}
 out:
 	return 0;
